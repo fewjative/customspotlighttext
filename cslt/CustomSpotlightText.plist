@@ -1,0 +1,10 @@
+{
+    entry = {
+	bundle = CustomSpotlightText;
+	cell = PSLinkCell;
+	detail = CustomSpotlightTextListController;
+	icon = CustomSpotlightText.png;
+	isController = 1;
+	label = CustomSpotlightText;
+    };
+}

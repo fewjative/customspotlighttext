@@ -1,71 +1,97 @@
 @interface UISearchField : UITextField
 @end
 
+#define SYS_VER_GREAT_OR_EQUAL(v) ([[[UIDevice currentDevice] systemVersion] compare:v options:64] != NSOrderedAscending)
+
 static NSString* SLtext = @"";
-static NSString* orig_placeholder = nil;
-static BOOL runOnce = NO;
 
-%hook SBSearchHeader
+%group iOS8
 
--(id)initWithFrame:(CGRect)frame{
+%hook SBSearchField
 
-	id r = %orig;
-
-	UISearchField *sf = MSHookIvar<UISearchField *>(self,"_searchField");
-	UITextField *tf = (UITextField*)sf;
-
-	if(!runOnce)
-	{
-		orig_placeholder = [[NSString alloc] initWithString:tf.placeholder];
-		NSLog(@"PLACEHOLDER: %@",orig_placeholder);
-		runOnce = YES;
-	}
-
-	
+-(void)setPlaceholder:(NSString*)text
+{
+	NSLog(@"setPlaceholder");
 
 	if([SLtext length] !=0)
 	{	
-		tf.placeholder = [[NSString alloc] initWithString:SLtext];
-	}
-
-	return r;
-}
-
--(void)layoutSubviews{
-	%log;
-	%orig;
-
-	UISearchField *sf = MSHookIvar<UISearchField *>(self,"_searchField");
-	UITextField *tf = (UITextField*)sf;
-
-	if([SLtext length] !=0)
-	{		
-		tf.placeholder = [[NSString alloc] initWithString:SLtext];
+		NSLog(@"[CustomSpotlightText]Valid custom spotlight text.");	
+		return %orig(SLtext);
 	}
 	else
 	{
-		NSLog(@"NOTEXT");
-		tf.placeholder = [[NSString alloc] initWithString:orig_placeholder];
+		NSLog(@"[CustomSpotlightText]No custom spotlight text.");
+		return %orig(text);
+	}
+}
+
+%end
+
+%end
+
+%group iOS7
+
+static NSString* orig_placeholder = nil;
+static BOOL runOnce = NO;
+
+%hook SBSearchField
+
+-(void)layoutSubviews{
+	NSLog(@"runOnce %d",(long)runOnce);
+	NSLog(@"placeholder: %@",[self placeholder]);
+
+	%orig;
+
+	if(!runOnce)
+	{
+		orig_placeholder = [[NSString alloc] initWithString:[self placeholder]];
+		NSLog(@"CSLT Placeholder text has been set.");
+		runOnce = YES;
 	}
 
+	if(runOnce)
+	{
+		if([SLtext length] !=0)
+		{		
+			[self setPlaceholder:SLtext];
+		}
+		else
+		{
+			[self setPlaceholder:orig_placeholder];
+		}
+	}
 }
+
+%end
 
 %end
 
 static void loadPrefs() 
 {
-    NSMutableDictionary *prefs = [[NSMutableDictionary alloc] initWithContentsOfFile:@"/var/mobile/Library/Preferences/com.joshdoctors.customspotlighttext.plist"];
+    NSLog(@"Loading CustomSpotlightText prefs");
+    CFPreferencesAppSynchronize(CFSTR("com.joshdoctors.customspotlighttext"));
 
-    if(prefs)
-    {
-        SLtext = ( [prefs objectForKey:@"SLtext"] ? [prefs objectForKey:@"SLtext"] : SLtext );
-        [SLtext retain];
-    }
-    [prefs release];
+    SLtext = (NSString*)CFPreferencesCopyAppValue(CFSTR("SLtext"), CFSTR("com.joshdoctors.customspotlighttext")) ?: @"";
+    [SLtext retain];
+    NSLog(@"Custom Text: %@",SLtext);
 }
 
 %ctor 
 {
-    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(), NULL, (CFNotificationCallback)loadPrefs, CFSTR("com.joshdoctors.customspotlighttext/settingschanged"), NULL, CFNotificationSuspensionBehaviorCoalesce);
+	NSLog(@"Loading CustomSpotlightText"); 
+    CFNotificationCenterAddObserver(CFNotificationCenterGetDarwinNotifyCenter(),
+                                NULL,
+                                (CFNotificationCallback)loadPrefs,
+                                CFSTR("com.joshdoctors.customspotlighttext/settingschanged"),
+                                NULL,
+                                CFNotificationSuspensionBehaviorDeliverImmediately);
+
+    if([[[UIDevice currentDevice] systemVersion] floatValue] < 8.0)
+	{
+		%init(iOS7);
+	}
+	else
+		%init(iOS8);
+
     loadPrefs();
 }
